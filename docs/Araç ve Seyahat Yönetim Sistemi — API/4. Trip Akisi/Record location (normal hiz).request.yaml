@@ -1,0 +1,21 @@
+$kind: http-request
+description: Limit altinda hiz -> uyarisiz yeni konum kaydi.
+url: "{{baseUrl}}/api/trips/{{tripId}}/locations"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 41.0200,
+      "longitude": 28.9900,
+      "speedKmh": 45
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });
+    language: text/javascript
+order: 5000

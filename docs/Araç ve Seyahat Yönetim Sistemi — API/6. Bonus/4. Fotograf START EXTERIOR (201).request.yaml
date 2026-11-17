@@ -1,0 +1,26 @@
+$kind: http-request
+name: "4. Fotograf START (EXTERIOR, 201)"
+description: "Hasar kiyasi icin baslangıç dış fotoğrafı: url'de 'damage' YOK. (Mock kural: END'de damage var + START'ta yoksa bulgu.)"
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/photos"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "phase": "START",
+      "photoType": "EXTERIOR",
+      "url": "mock://bonus-start-ext.jpg"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      const j = pm.response.json();
+      pm.test('faz/tur dogru kaydedildi', function () {
+        pm.expect(j.phase).to.eql('START');
+        pm.expect(j.photoType).to.eql('EXTERIOR');
+      });
+    language: text/javascript
+order: 6400

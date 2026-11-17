@@ -1,0 +1,52 @@
+$kind: http-request
+name: "1. Mock door control (hata enjeksiyonu: failUnlock=1)"
+description: "Kurucu: arac 1 AVAILABLE'a alinir, demo kullaniciya ({{userId}}) 1000 TL yuklenir (start bakiye kontrolu icin), aracin GUNCEL konumundan 6.1292 km ileride hedef hesaplanip yeni bonus seyahat olusturulur (bonusTripId), sonra mock kapiya 1 unlock hatasi enjekte edilir. Uc yalnizca app.dev.mock-control-enabled=true iken vardir. NOT: seyahat demo kullanicisina ({{userId}}) aittir - seed kullanicisi 1'in baska bir ACTIVE seyahati olsa da bu klasor calisir."
+url: "{{baseUrl}}/api/dev/mock/door"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "failUnlockCount": 1,
+      "failLockCount": 0
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const base = pm.collectionVariables.get('baseUrl');
+      const userId = Number(pm.collectionVariables.get('userId'));
+      const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+      const jsonReq = (url, body) => ({ url, method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        body: { mode: 'raw', raw: JSON.stringify(body) } });
+      // 1) arac 1'i AVAILABLE yap (IN_USE ise API reddeder; hata yoksayilir)
+      pm.sendRequest(jsonReq(base + '/api/vehicles/1/status', { status: 'AVAILABLE' }), function () {
+        // 2) hedefi aracin gUNCEL konumundan tam 6.1292 km ileride hesapla (mesafe fee sabit kalsin)
+        pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {
+          const v = res.json();
+          const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;
+          const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));
+          const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+          pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));
+          pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));
+          // 3) demo kullaniciya bakiye + bonus seyahatini olustur
+          pm.sendRequest(jsonReq(base + '/api/users/' + userId + '/wallet/top-up', { amount: 1000 }), function () {
+            pm.sendRequest(jsonReq(base + '/api/trips', { userId: userId, vehicleId: 1,
+                destinationLatitude: Number(pm.collectionVariables.get('destLat')),
+                destinationLongitude: Number(pm.collectionVariables.get('destLng')) }), function (err2, res2) {
+              if (!err2 && res2.code === 201) { pm.collectionVariables.set('bonusTripId', String(res2.json().id)); }
+            });
+          });
+        });
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (dev kontrol acik)', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('unlock sayaci 1 olarak ayarlandi', function () { pm.expect(j.failUnlockCount).to.eql(1); });
+      pm.test('bonusTripId yakalandi', function () { pm.expect(String(pm.collectionVariables.get('bonusTripId'))).to.not.eql(''); });
+    language: text/javascript
+order: 6100

@@ -1,0 +1,23 @@
+$kind: http-request
+name: "Negatif: Tekrar eden recordedAt (200 + duplicate=true)"
+description: Ayni trip + ayni recordedAt -> yeni satir EKLENMEZ; mevcut kayit 200 + duplicate=true doner, uyar yazilmaz (uq_trip_locations_trip_time DB'de son savunma).
+url: "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 40.0,
+      "longitude": 32.9,
+      "speedKmh": 50,
+      "recordedAt": "{{dupRecordedAt}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK) - idempotent tekrar', function () { pm.response.to.have.status(200); });
+      pm.test('duplicate=true, yeni satir yok', function () { pm.expect(pm.response.json().duplicate).to.be.true; });
+    language: text/javascript
+order: 9000

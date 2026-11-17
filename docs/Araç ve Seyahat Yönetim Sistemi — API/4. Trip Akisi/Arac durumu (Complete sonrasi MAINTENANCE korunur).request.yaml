@@ -1,0 +1,11 @@
+$kind: http-request
+description: "Complete sonrasi kontrol: ariza bildirimi olan arac IN_USE->AVAILABLE olmaz, MAINTENANCE kalir (konum/menzil yine guncellenir - VehicleService.completeTripUsage)."
+url: "{{baseUrl}}/api/vehicles/1"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('arac 1 MAINTENANCE KALDI (ariza varsa bakım devam eder, D5/D11)', function () { pm.expect(pm.response.json().status).to.eql('MAINTENANCE'); });
+    language: text/javascript
+order: 10000

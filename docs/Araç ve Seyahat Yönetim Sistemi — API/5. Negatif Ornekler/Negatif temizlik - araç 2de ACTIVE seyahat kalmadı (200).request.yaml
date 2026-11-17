@@ -1,0 +1,85 @@
+$kind: http-request
+name: "Negatif temizlik - araç 2'de ACTIVE seyahat kalmadı (200)"
+description: "KAYNAK TEMIZLIGI (koleksiyonun tekrar calistirilabilir olmasi icin): arac 2 uzerinde ACTIVE seyahat kalmasi durumunda o seyahat bu istekle TAMAMLANIR (yalnizca tamamlanacak seyahatin sahibine bakiye yuklenir; boylece 'yetersiz bakiye' kullanicisinin bakiyesi bozulmaz). Boylece arac 2 tekrar AVAILABLE olur ve hicbir kullanicida ACTIVE seyahat kalmaz. Temizlik, kullanicilari (1, 4 ve demo kullanicisi {{userId}}) tek tek tarar; arac 2'de ACTIVE seyahat yoksa zaten temizdir (idempotent: demo kullanicisinin son seyahati tamamlanir)."
+url: "{{baseUrl}}/api/trips/{{cleanupTripId}}/complete"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": {{cleanupLat}},
+      "longitude": {{cleanupLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const base = pm.collectionVariables.get('baseUrl');
+      const demoUser = Number(pm.collectionVariables.get('userId'));
+      const users = [1, 4, demoUser].filter(u => !isNaN(u) && u > 0);
+      const candidates = [];
+      let pending = users.length;
+      users.forEach(function (u) {
+        pm.sendRequest({ url: base + '/api/users/' + u + '/trips', method: 'GET' }, function (err, res) {
+          if (!err && res.code === 200) {
+            res.json().forEach(function (t) {
+              if (t.status === 'ACTIVE' && t.vehicleId === 2) { candidates.push(t); }
+            });
+          }
+          pending -= 1;
+          if (pending === 0) {
+            if (candidates.length === 0) {
+              // Arac 2'de ACTIVE seyahat yok -> zaten temiz: demo kullanicisinin son seyahatini
+              // idempotent olarak tamamla (COMPLETED seyahat -> 200, ACTIVE -> kapanir).
+              pm.sendRequest({ url: base + '/api/users/' + demoUser + '/trips', method: 'GET' }, function (e2, r2) {
+                    const list = (e2 || !r2) ? [] : r2.json();
+                if (list.length > 0) {
+                  pm.collectionVariables.set('cleanupTripId', list[0].id);
+                  pm.collectionVariables.set('cleanupLat', list[0].destinationLatitude);
+                  pm.collectionVariables.set('cleanupLng', list[0].destinationLongitude);
+                } else {
+                  pm.collectionVariables.set('cleanupTripId', 1);
+                  pm.collectionVariables.set('cleanupLat', 40.9919);
+                  pm.collectionVariables.set('cleanupLng', 29.0270);
+                }
+              });
+              return;
+            }
+            const target = candidates[0];
+            pm.collectionVariables.set('cleanupTripId', target.id);
+            pm.collectionVariables.set('cleanupLat', target.destinationLatitude);
+            pm.collectionVariables.set('cleanupLng', target.destinationLongitude);
+            // Yalnizca tamamlanacak seyahatin sahibine bakiye yukle (diger kullanicilarin bakiyesi bozulmaz)
+            const owner = target.userId || 1;
+            pm.sendRequest({ url: base + '/api/users/' + owner + '/wallet/top-up', method: 'POST',
+              header: { 'Content-Type': 'application/json' },
+              body: { mode: 'raw', raw: JSON.stringify({ amount: 500 }) } }, function () {});
+          }
+        });
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK) - temizlik tamamlandi', function () { pm.response.to.have.status(200); });
+      pm.test('durum COMPLETED', function () { pm.expect(pm.response.json().status).to.eql('COMPLETED'); });
+      pm.test('arac 2 uzerinde ACTIVE seyahat kalmadi', function (done) {
+        const base = pm.collectionVariables.get('baseUrl');
+        const users = [1, 4, Number(pm.collectionVariables.get('userId'))].filter(u => !isNaN(u) && u > 0);
+        let left = 0;
+        let pending = users.length;
+        users.forEach(function (u) {
+          pm.sendRequest({ url: base + '/api/users/' + u + '/trips', method: 'GET' }, function (err, res) {
+            if (!err && res.code === 200) {
+                left += res.json().filter(t => t.status === 'ACTIVE' && t.vehicleId === 2).length;
+            }
+            pending -= 1;
+            if (pending === 0) {
+              pm.expect(left, 'arac 2 uzerinde ACTIVE seyahat kalmamali').to.eql(0);
+              done();
+            }
+          });
+        });
+      });
+    language: text/javascript
+order: 10050

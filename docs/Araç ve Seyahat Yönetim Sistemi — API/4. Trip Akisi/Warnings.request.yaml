@@ -1,0 +1,11 @@
+$kind: http-request
+description: "Uyarilar: hiz asimi (SPEED_LIMIT) ve tamamlamada sure asimi (DURATION_EXCEEDED)."
+url: "{{baseUrl}}/api/trips/{{tripId}}/warnings"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('en az 1 SPEED_LIMIT uyarisi', function () { const w = pm.response.json(); pm.expect(w).to.have.lengthOf.at.least(1); pm.expect(w.some(x => x.warningType === 'SPEED_LIMIT')).to.be.true; });
+    language: text/javascript
+order: 7000

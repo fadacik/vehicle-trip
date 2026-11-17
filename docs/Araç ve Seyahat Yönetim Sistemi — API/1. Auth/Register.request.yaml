@@ -1,0 +1,36 @@
+$kind: http-request
+description: Telefonla kayit. Kullanimci PENDING olusur; OTP uretilir (MockSmsSender loga yazar, gelistirmede yanitta doner). Zaten PENDING olan telefona tekrar register yeni OTP uretir; VERIFIED/SUSPENDED ise 409.
+url: "{{baseUrl}}/api/auth/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "fullName": "Postman Demo Kullanicisi",
+      "phone": "{{phone}}",
+      "nationalId": "{{nationalId}}",
+      "profilePhotoUrl": "https://example.com/photos/demo.jpg"
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Her calistirmada benzersiz telefon + TC kimlik no uret (phone DB'de UNIQUE).
+      // nationalId: RegisterRequest @Pattern [0-9]{11} -> TAM 11 rakam (7 + 4).
+      const digits = () => Math.floor(1000000 + Math.random() * 9000000).toString();
+      const fourDigits = () => Math.floor(1000 + Math.random() * 9000).toString();
+      pm.collectionVariables.set('phone', '+90555' + digits());
+      pm.collectionVariables.set('nationalId', digits() + fourDigits());
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      const j = pm.response.json();
+      pm.test('userId dondu', function () { pm.expect(j.userId).to.be.a('number'); });
+      pm.test('otp 6 haneli (expose-in-response=true)', function () { pm.expect(j.otp).to.be.a('string').and.have.lengthOf(6); });
+      // Sonraki istekler icin yakala
+      pm.collectionVariables.set('userId', j.userId);
+      pm.collectionVariables.set('otp', j.otp);
+    language: text/javascript
+order: 1000

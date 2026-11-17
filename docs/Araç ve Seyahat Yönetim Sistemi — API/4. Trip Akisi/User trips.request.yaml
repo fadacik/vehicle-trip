@@ -1,0 +1,11 @@
+$kind: http-request
+description: Kullanicinin tum seyahatleri.
+url: "{{baseUrl}}/api/users/{{userId}}/trips"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('en az 1 seyahat', function () { pm.expect(pm.response.json()).to.be.an('array').with.lengthOf.at.least(1); });
+    language: text/javascript
+order: 13000

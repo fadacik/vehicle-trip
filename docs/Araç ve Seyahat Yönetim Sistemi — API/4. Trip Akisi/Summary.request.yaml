@@ -1,0 +1,12 @@
+$kind: http-request
+description: "Seyahat ozeti: tahminler vs gerceklesenler, ucret, uyarilar, arizalar, delayExplanation."
+url: "{{baseUrl}}/api/trips/{{tripId}}/summary"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('COMPLETED + gerceklesen mesafe/sure dolu', function () { pm.expect(j.status).to.eql('COMPLETED'); pm.expect(j.actualDistanceKm).to.exist; pm.expect(j.actualDurationMin).to.exist; });
+    language: text/javascript
+order: 11000

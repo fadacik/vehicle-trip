@@ -1,0 +1,61 @@
+$kind: http-request
+name: "6. Complete (hasarli) - tek tahsilat: mesafe + 500.00"
+description: "Hedef koordinatla complete: START+END EXTERIOR cifti DAMAGE uretir -> trip_fees'te DISTANCE (91.95) + DAMAGE (500.00) ayri CHARGED satirlari, TEK TRIP_CHARGE = 591.95 TL (hareket aciklamasinda dokum). Kurucuda demo kullaniciya ({{userId}}) 1000 TL yuklenir (hasar dahil bakiye garantisi)."
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/complete"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": {{destLat}},
+      "longitude": {{destLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const base = pm.collectionVariables.get('baseUrl');
+      const userId = pm.collectionVariables.get('userId');
+      pm.sendRequest({ url: base + '/api/users/' + userId + '/wallet/top-up', method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        body: { mode: 'raw', raw: JSON.stringify({ amount: 1000 }) } }, function () {});
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('COMPLETED + DISTANCE kalemi CHARGED', function () {
+        pm.expect(j.status).to.eql('COMPLETED');
+        pm.expect(j.fee.status).to.eql('CHARGED');
+      });
+      pm.test('mesafe kalemi 91.95 TL (6.13 x 15.00)', function () {
+        pm.expect(Math.abs(Number(j.fee.amount) - 91.95)).to.be.below(0.02);
+      });
+      pm.test('hasar kalemi 500.00 ve CHARGED (ayri kalem)', function () {
+        pm.expect(Number(j.damageFee.amount)).to.eql(500.00);
+        pm.expect(j.damageFee.status).to.eql('CHARGED');
+      });
+      pm.test('1 hasar kaydi (DAMAGE/EXTERIOR), 2 fotograf', function () {
+        pm.expect(j.damages.length).to.eql(1);
+        pm.expect(j.damages[0].damageKind).to.eql('DAMAGE');
+        pm.expect(j.photos.length).to.eql(2);
+      });
+      pm.test('kapi izleri: en az 1 SUCCESS UNLOCK (TRIP_START)', function () {
+        pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'UNLOCK')).to.be.true;
+      });
+      pm.test('TEK TRIP_CHARGE = mesafe + hasar (591.95) ve aciklamada dokum', function (done) {
+        const base = pm.collectionVariables.get('baseUrl');
+        const userId = pm.collectionVariables.get('userId');
+        const tripId = Number(pm.collectionVariables.get('bonusTripId'));
+        pm.sendRequest({ url: base + '/api/users/' + userId + '/wallet/transactions', method: 'GET' }, function (err, res) {
+          const charges = res.json().filter(t => t.type === 'TRIP_CHARGE' && t.tripId === tripId);
+          pm.expect(charges.length, 'bu seyahat icin TAM 1 TRIP_CHARGE olmali').to.eql(1);
+          pm.expect(Math.abs(Number(charges[0].amount) - 591.95), 'tutar 91.95 + 500.00 = 591.95 olmali').to.be.below(0.02);
+          pm.expect(charges[0].description, 'hareket aciklamasinda mesafe + hasar dokumu olmali')
+            .to.include('mesafe: 91.95 TL + hasar: 500.00 TL');
+          done();
+        });
+      });
+    language: text/javascript
+order: 6600

@@ -1,0 +1,11 @@
+$kind: http-request
+description: Bakiye goruntuleme. Yeni dogrulanan kullanicida 0.00 doner.
+url: "{{baseUrl}}/api/users/{{userId}}/wallet"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('userId eslesiyor', function () { pm.expect(pm.response.json().userId).to.eql(Number(pm.collectionVariables.get('userId'))); });
+    language: text/javascript
+order: 1000

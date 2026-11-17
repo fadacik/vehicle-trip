@@ -1,0 +1,3 @@
+$kind: collection
+description: "Kural ihlalleri: hedef alan disi (422), bakimdaki arac (409), yetersiz bakiye (402), gecersiz konum (400), tekrar eden recordedAt (200 + duplicate=true), tekrar complete (200, ayni ozet)."
+order: 5000

@@ -1,0 +1,22 @@
+$kind: http-request
+name: "Negatif: Tekrar complete (200, ayni ozet)"
+description: Zaten COMPLETED seyahat (4. Trip Akisi'ndeki {{tripId}}) tekrar tamamlanir -> hicbir yazma/tahsilat yapilmadan mevcut ozet 200 doner (D7 idempotency). '4. Trip Akisi' calistirilmis olmali.
+url: "{{baseUrl}}/api/trips/{{tripId}}/complete"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 40.9919,
+      "longitude": 29.0270
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK) - idempotent', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('COMPLETED ve ayni ucret (ikinci tahsilat YOK)', function () { pm.expect(j.status).to.eql('COMPLETED'); pm.expect(Number(j.estimatedFee)).to.eql(Number(pm.collectionVariables.get('mainFee'))); });
+    language: text/javascript
+order: 10000

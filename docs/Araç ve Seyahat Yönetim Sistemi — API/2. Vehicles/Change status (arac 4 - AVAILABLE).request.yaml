@@ -1,0 +1,20 @@
+$kind: http-request
+name: Change status (arac 4 -> AVAILABLE)
+description: "Manuel durum gecisi: yalnizca AVAILABLE <-> MAINTENANCE yapilabilir (IN_USE gecisleri 409 INVALID_VEHICLE_TRANSITION). Seed arac 4 MAINTENANCE -> AVAILABLE denenir. Bir sonraki istek araci MAINTENANCE'a geri alir ki '5. Negatif Ornekler'deki bakimdaki arac senaryosu bozulmasin."
+url: "{{baseUrl}}/api/vehicles/4/status"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "status": "AVAILABLE"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('durum AVAILABLE oldu', function () { pm.expect(pm.response.json().status).to.eql('AVAILABLE'); });
+    language: text/javascript
+order: 4000

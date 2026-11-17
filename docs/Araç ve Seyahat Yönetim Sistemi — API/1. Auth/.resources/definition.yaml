@@ -1,0 +1,3 @@
+$kind: collection
+description: Kayit -> OTP dogrulama -> OTP yeniden gonderme. Register pre-request script'i benzersiz telefon uretir; test script'i userId ve otp'yi yakalar.
+order: 1000

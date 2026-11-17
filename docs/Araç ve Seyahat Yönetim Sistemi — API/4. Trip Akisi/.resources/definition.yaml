@@ -1,0 +1,3 @@
+$kind: collection
+description: "Uctan uca seyahat: olustur -> getir -> baslat -> konum (hizli/uyari) -> konum (normal) -> konumlar -> uyarilar -> ariza -> tamamla -> arac durumu (MAINTENANCE kontrolu) -> ozet -> timeline -> kullanici seyahatleri. Araclar: id 1/4 akis sonunda MAINTENANCE birakilir."
+order: 4000

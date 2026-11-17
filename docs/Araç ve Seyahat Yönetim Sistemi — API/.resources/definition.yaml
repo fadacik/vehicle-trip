@@ -1,0 +1,42 @@
+$kind: collection
+description: |-
+  Araç ve Seyahat Yönetim Sistemi backend API koleksiyonu (Postman v2.1).
+
+  KULLANIM:
+  1) Uygulamayı başlatın: docker compose up -d  ->  .\mvnw.cmd spring-boot:run
+  2) Collection Variables'da baseUrl = http://localhost:8080 (varsayilan).
+  3) Klasörleri SIRAYLA calistirin (sağ tık -> Run folder): 1. Auth -> 2. Vehicles -> 3. Wallet -> 4. Trip Akisi -> 5. Negatif Ornekler -> 6. Bonus.
+
+  DEGISKENLER: baseUrl, userId, vehicleId, tripId, phone, otp (ve dahili: locTripId, dupRecordedAt, mainFee, bonusTripId, bonusTripId2, destLat, destLng, locDestLat, locDestLng, lowBalDestLat, lowBalDestLng, cleanupTripId, cleanupLat, cleanupLng). Register sonrasi userId/otp/phone, Create sonrasi tripId otomatik yakalanir.
+
+  ADIM 17 / KONUM KAYMASI NOTLARI:
+    - Bonus klasoru demo kullanicisini ({{userId}}) kullanir; seed kullanicisi 1'de baska bir ACTIVE seyahat olsa da calisir.
+    - Hedef, aracin GUNCEL konumundan tam 6.1292 km ileride hesaplanir (destLat/destLng) -> mesafe (6.13 km), sure (10 dk) ve ucret (91.95 TL) beklentileri arac konumu kaymisse bile aynen korunur.
+    - "5. Negatif Ornekler" klasorundaki "Negatif temizlik" istegi konum testi seyahatini tamamlar: arac 2 serbest kalir, ACTIVE seyahat kalmaz -> koleksiyon tekrar calistirilabilir.
+    - ONKOSUL: uygulama V3/V4 migration'larini uygulamis olmali (Flyway otomatik uygular). Migration sonrasi yeniden baslatilmadiysa /api/trips/{id}/photos ve kapi denetim yazimlari 500 INTERNAL_ERROR doner.  ONEMLI (temiz seed): Negatif senaryolar seed'deki kullanicilara (id 1 bakiyeli, id 4 bakiyesiz) ve araclara (id 4 MAINTENANCE) baglidir; '4. Trip Akisi' araç 1'i ariza ile MAINTENANCE birakir. Koleksiyonu bastan temiz kosmak icin veritabanini sifirlayin:
+    docker compose down -v ; docker compose up -d
+  sonra uygulamayi yeniden baslatin. Aksi halde bazi istekler (orn. musait araç bekleyenler) beklenmedik durum kodu alabilir.
+
+  Seed degerleri (V2__seed_data.sql): kullanici 1 Ahmet(+905550000001, 2000TL), kullanici 4 Elif(+905550000004, 50TL), kullanici 5 Can(0TL); araç 1 Istanbul AVAILABLE, araç 3 Izmir kalan-menzil 5km, araç 4 Istanbul MAINTENANCE.
+variables:
+  baseUrl: http://localhost:8080
+  userId: ""
+  vehicleId: "1"
+  tripId: ""
+  phone: ""
+  otp: ""
+  locTripId: ""
+  lowBalTripId: ""
+  dupRecordedAt: ""
+  mainFee: ""
+  bonusTripId: ""
+  bonusTripId2: ""
+  destLat: ""
+  destLng: ""
+  locDestLat: ""
+  locDestLng: ""
+  lowBalDestLat: ""
+  lowBalDestLng: ""
+  cleanupTripId: ""
+  cleanupLat: ""
+  cleanupLng: ""

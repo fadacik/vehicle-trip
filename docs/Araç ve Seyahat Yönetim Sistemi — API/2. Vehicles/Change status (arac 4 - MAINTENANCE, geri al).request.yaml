@@ -1,0 +1,20 @@
+$kind: http-request
+name: Change status (arac 4 -> MAINTENANCE, geri al)
+description: Arac 4'u seed durumuna (MAINTENANCE) geri alir; boylece negatif klasordeki 'bakimdaki arac (409)' senaryosu gecerli kalir.
+url: "{{baseUrl}}/api/vehicles/4/status"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "status": "MAINTENANCE"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('durum MAINTENANCE (eski haline dondu)', function () { pm.expect(pm.response.json().status).to.eql('MAINTENANCE'); });
+    language: text/javascript
+order: 5000

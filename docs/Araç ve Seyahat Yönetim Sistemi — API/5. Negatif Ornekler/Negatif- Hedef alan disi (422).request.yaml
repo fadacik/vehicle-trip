@@ -1,0 +1,23 @@
+$kind: http-request
+name: "Negatif: Hedef alan disi (422)"
+description: "Ankara araci (id 2) icin Ankara hizmet alani (yaricap 40 km) disindaki hedef (39.0, 35.0) -> 422 DESTINATION_OUT_OF_ZONE. Seed: kullanici 1 (VERIFIED)."
+url: "{{baseUrl}}/api/trips"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": 1,
+      "vehicleId": 2,
+      "destinationLatitude": 39.0,
+      "destinationLongitude": 35.0
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 422 (Unprocessable Entity)', function () { pm.response.to.have.status(422); });
+      pm.test('kod DESTINATION_OUT_OF_ZONE', function () { pm.expect(pm.response.json().code).to.eql('DESTINATION_OUT_OF_ZONE'); });
+    language: text/javascript
+order: 1000

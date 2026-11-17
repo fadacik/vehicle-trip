@@ -1,0 +1,53 @@
+$kind: http-request
+name: "8. Basarisiz complete - kapi kilitlenemedi (503 DOOR_LOCK_FAILED)"
+description: "Kurucu (beforeRequest): demo kullaniciya ({{userId}}) ait ikinci bonus seyahat olusturulur ve baslatilir (bonusTripId2), sonra mock kapiya 1 lock hatasi enjekte edilir. Bu istek: complete -> 503; TAHSILAT YOK, trip ACTIVE, arac IN_USE (tam rollback), FAILED izi kalici."
+url: "{{baseUrl}}/api/trips/{{bonusTripId2}}/complete"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": {{destLat}},
+      "longitude": {{destLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const base = pm.collectionVariables.get('baseUrl');
+      const userId = Number(pm.collectionVariables.get('userId'));
+      const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+      const jsonReq = (url, body) => ({ url, method: 'POST',
+        header: { 'Content-Type': 'application/json' },
+        body: { mode: 'raw', raw: JSON.stringify(body) } });
+      pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {
+        const v = res.json();
+        const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;
+        const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));
+        const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+        pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));
+        pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));
+        pm.sendRequest(jsonReq(base + '/api/trips', { userId: userId, vehicleId: 1,
+            destinationLatitude: Number(pm.collectionVariables.get('destLat')),
+            destinationLongitude: Number(pm.collectionVariables.get('destLng')) }), function (err2, res2) {
+          if (err2 || res2.code !== 201) { return; }
+          const tripId = res2.json().id;
+          pm.collectionVariables.set('bonusTripId2', String(tripId));
+          pm.sendRequest(jsonReq(base + '/api/trips/' + tripId + '/start', {}), function () {
+            pm.sendRequest(jsonReq(base + '/api/dev/mock/door', { failUnlockCount: 0, failLockCount: 1 }), function () {});
+          });
+        });
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 503 (Service Unavailable)', function () { pm.response.to.have.status(503); });
+      const j = pm.response.json();
+      pm.test('kod DOOR_LOCK_FAILED, mesaj tekrar denemeye cagrir', function () {
+        pm.expect(j.code).to.eql('DOOR_LOCK_FAILED');
+        pm.expect(j.message).to.include('tekrar deneyebilirsiniz');
+      });
+      pm.test('bonusTripId2 yakalandi', function () { pm.expect(String(pm.collectionVariables.get('bonusTripId2'))).to.not.eql(''); });
+    language: text/javascript
+order: 6800

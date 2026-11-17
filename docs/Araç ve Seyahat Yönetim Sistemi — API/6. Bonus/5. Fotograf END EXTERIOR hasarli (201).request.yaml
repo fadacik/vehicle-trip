@@ -1,0 +1,22 @@
+$kind: http-request
+name: "5. Fotograf END (EXTERIOR, hasarli: url'de 'damage')"
+description: "Bitiş dış fotoğrafında 'damage' anahtar kelimesi var → complete sırasında DAMAGE bulgusu üretilecek (maliyet app.damage.damage-cost.EXTERIOR = 500.00 TL)."
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/photos"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "phase": "END",
+      "photoType": "EXTERIOR",
+      "url": "mock://bonus-end-damage-ext.jpg"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.test('faz END', function () { pm.expect(pm.response.json().phase).to.eql('END'); });
+    language: text/javascript
+order: 6500

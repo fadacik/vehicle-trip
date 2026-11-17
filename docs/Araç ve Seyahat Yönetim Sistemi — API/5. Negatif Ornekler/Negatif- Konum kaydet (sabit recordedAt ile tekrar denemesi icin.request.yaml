@@ -1,0 +1,28 @@
+$kind: http-request
+name: "Negatif: Konum kaydet (sabit recordedAt ile tekrar denemesi icin)"
+description: Pre-request script 'dupRecordedAt' degiskenini simanki zamana ayarlar ve govdede kullanilir -> 201 + duplicate=false. Ayni govde bir sonraki istekte tekrar gonderilir.
+url: "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 40.0,
+      "longitude": 32.9,
+      "speedKmh": 50,
+      "recordedAt": "{{dupRecordedAt}}"
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Iki istegin AYNI recordedAt'i kullanmasi icin koleksiyon degiskenine yazilir.
+      pm.collectionVariables.set('dupRecordedAt', new Date().toISOString());
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });
+    language: text/javascript
+order: 8000

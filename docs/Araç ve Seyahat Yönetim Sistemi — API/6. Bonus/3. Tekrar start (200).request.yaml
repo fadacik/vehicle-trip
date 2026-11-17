@@ -1,0 +1,12 @@
+$kind: http-request
+name: "3. Tekrar start (200) - hata sayaci tukendi"
+description: "Ayni istek tekrar gonderilir; mock sayaci tukendigi ici kapı açılır ve start 200 ile ACTIVE olur (rollback sonrasi trip hâlâ CREATED, araç AVAILABLE idi)."
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/start"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('durum ACTIVE', function () { pm.expect(pm.response.json().status).to.eql('ACTIVE'); });
+    language: text/javascript
+order: 6300

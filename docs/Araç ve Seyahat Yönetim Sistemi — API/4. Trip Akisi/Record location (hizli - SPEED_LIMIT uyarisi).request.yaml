@@ -1,0 +1,23 @@
+$kind: http-request
+name: Record location (hizli -> SPEED_LIMIT uyarisi)
+description: "Konum: alan merkezine 15 km icinde -> sehir ici limit 80 km/s; 130 km/s asim -> SPEED_LIMIT uyarisi yazilir. recordedAt verilmezse sunucu saati kullanilir. Yeni kayit 201 + duplicate=false."
+url: "{{baseUrl}}/api/trips/{{tripId}}/locations"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 41.0369,
+      "longitude": 28.9850,
+      "speedKmh": 130
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });
+      pm.test('konum alan merkezi icinde -> city=Istanbul', function () { pm.expect(pm.response.json().city).to.eql('Istanbul'); });
+    language: text/javascript
+order: 4000

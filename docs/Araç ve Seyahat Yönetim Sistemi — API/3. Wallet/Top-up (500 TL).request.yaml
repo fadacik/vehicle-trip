@@ -1,0 +1,19 @@
+$kind: http-request
+description: Mock bakiye yukleme (odeme servisi yok). 500 TL, '4. Trip Akisi'ndaki ~91.95 TL'lik seyahati karsilar. Sadece pozitif tutar kabul edilir; 0/negatif -> 400.
+url: "{{baseUrl}}/api/users/{{userId}}/wallet/top-up"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "amount": 500
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('bakiye 500 TL', function () { pm.expect(Number(pm.response.json().balance)).to.be.at.least(500); });
+    language: text/javascript
+order: 2000

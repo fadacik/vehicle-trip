@@ -1,0 +1,23 @@
+$kind: http-request
+name: "Negatif: Bakimdaki arac (409)"
+description: Arac 4 seed'de MAINTENANCE (bkz. V2__seed_data.sql) -> AVAILABLE olmayan aracla seyahat olusturma 409 VEHICLE_NOT_AVAILABLE.
+url: "{{baseUrl}}/api/trips"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": 1,
+      "vehicleId": 4,
+      "destinationLatitude": 40.9919,
+      "destinationLongitude": 29.0270
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 409 (Conflict)', function () { pm.response.to.have.status(409); });
+      pm.test('kod VEHICLE_NOT_AVAILABLE', function () { pm.expect(pm.response.json().code).to.eql('VEHICLE_NOT_AVAILABLE'); });
+    language: text/javascript
+order: 2000

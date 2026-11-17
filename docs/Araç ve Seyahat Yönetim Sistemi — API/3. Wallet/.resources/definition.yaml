@@ -1,0 +1,3 @@
+$kind: collection
+description: Kayit edilen kullanicinin cuzdanini goruntule, bakiye yukle (trip akisi icin bakiye hazirlar), hareketleri listele.
+order: 3000

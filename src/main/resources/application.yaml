@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: vehicle-trip
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/vehicle_trip
+    username: vehicle_user
+    password: vehicle_pass
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+# Fiyatlar ve sabitler kod içinde değil, yapılandırmada/veritabanında tutulacak.
+app:
+  otp:
+    length: 6
+    validity-minutes: 5
+    expose-in-response: true
+  trip:
+    average-speed-kmh: 40
+    duration-tolerance-percent: 20
+    road-factor: 1.0
+    city-radius-km: 15.0
+    arrival-radius-km: 1.0
+    location-max-future-seconds: 60
+  speed-limit:
+    city-kmh: 80
+    outside-kmh: 120
+  dev:
+    # YALNIZCA gelistirme: mock kapı hata enjeksiyonu uçlari (/api/dev/mock/door) acik olsun mu?
+    # Uretimde false olmali; false iken controller bean hic olusmaz.
+    mock-control-enabled: true
+  damage:
+    # Hasar birim maliyetleri (TL) — MockDamageDetectionService bulgularinda kullanilir.
+    damage-cost:
+      EXTERIOR: 500.00
+      FRONT_SEAT: 300.00
+      BACK_SEAT: 300.00
+    missing-item-cost: 150.00

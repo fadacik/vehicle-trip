@@ -1,0 +1,3 @@
+$kind: collection
+description: Araç listeleme (tumu / filtreli), detay ve manuel durum gecisi (MAINTENANCE -> AVAILABLE -> MAINTENANCE; araci eski haline alir).
+order: 2000

@@ -1,0 +1,11 @@
+$kind: http-request
+description: Kayitli konumlar (recordedAt sirali).
+url: "{{baseUrl}}/api/trips/{{tripId}}/locations"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('en az 2 konum, zaman sirali', function () { const a = pm.response.json(); pm.expect(a).to.have.lengthOf.at.least(2); for (let i = 1; i < a.length; i++) { pm.expect(new Date(a[i].recordedAt) >= new Date(a[i-1].recordedAt)).to.be.true; } });
+    language: text/javascript
+order: 6000

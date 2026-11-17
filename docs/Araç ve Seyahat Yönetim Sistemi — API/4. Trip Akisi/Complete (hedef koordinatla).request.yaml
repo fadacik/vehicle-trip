@@ -1,0 +1,25 @@
+$kind: http-request
+description: "Tamamlama: son konum yazilir, gerceklesen mesafe/sure hesaplanir, tahsilat yapilir (tek @Transactional; kilit sirasi trip->arac->cuzdan). Ariza kaydi oldugundan varis mesafesi kontrolu muaf (D14 istisnasi); yine de hedef koordinat verildi. Arac MAINTENANCE KALIR (ariza nedeniyle), menzil/konum guncellenir. Yanit = GET summary ile ayni ozet."
+url: "{{baseUrl}}/api/trips/{{tripId}}/complete"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": {{destLat}},
+      "longitude": {{destLng}},
+      "speedKmh": 0
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('durum COMPLETED', function () { pm.expect(j.status).to.eql('COMPLETED'); });
+      pm.test('ucret 91.95 TL tahsil edildi', function () { pm.expect(Math.abs(Number(j.estimatedFee) - 91.95)).to.be.below(0.02); });
+      pm.test('ucret hareketi (TRIP_CHARGE) kaydedildi', function () { pm.expect(j.fee).to.exist; pm.expect(j.fee.status).to.eql('CHARGED'); });
+      pm.collectionVariables.set('mainFee', j.estimatedFee);
+    language: text/javascript
+order: 9000

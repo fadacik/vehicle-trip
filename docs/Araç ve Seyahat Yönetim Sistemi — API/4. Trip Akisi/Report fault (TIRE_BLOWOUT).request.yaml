@@ -1,0 +1,20 @@
+$kind: http-request
+description: "Ariza: yalnizca ACTIVE seyahate bildirilir. IN_USE->MAINTENANCE gecisi tek noktadan (D11); seyahat ACTIVE kalir (D12). Gecerli turler: TIRE_BLOWOUT, BATTERY, DOOR, ENGINE, OTHER."
+url: "{{baseUrl}}/api/trips/{{tripId}}/faults"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "faultType": "TIRE_BLOWOUT",
+      "description": "Arka sol lastik patladi (Postman senaryosu)"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.test('arac MAINTENANCE oldu', function () { pm.expect(pm.response.json().vehicleStatus).to.eql('MAINTENANCE'); });
+    language: text/javascript
+order: 8000

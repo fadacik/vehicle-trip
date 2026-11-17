@@ -1,0 +1,12 @@
+$kind: http-request
+name: "Negatif: Yetersiz bakiye - baslat (402)"
+description: "Bakiye (50 TL) < tahmini ucret (~149 TL) -> 402 INSUFFICIENT_BALANCE. Baslatma rollback olur: trip CREATED kalir, arac AVAILABLE kalir."
+url: "{{baseUrl}}/api/trips/{{lowBalTripId}}/start"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 402 (Payment Required)', function () { pm.response.to.have.status(402); });
+      pm.test('kod INSUFFICIENT_BALANCE', function () { pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_BALANCE'); });
+    language: text/javascript
+order: 4000

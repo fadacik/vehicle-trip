@@ -1,0 +1,1389 @@
+{
+  "info": {
+    "_postman_id": "7f3e6d2a-4b18-4c9a-9f2d-3a5b8c1e0f42",
+    "name": "Araç ve Seyahat Yönetim Sistemi - API",
+    "description": "Araç ve Seyahat Yönetim Sistemi backend API koleksiyonu.\n\nKULLANIM:\n1) Uygulamayı başlatın: docker compose up -d  →  .\\mvnw.cmd spring-boot:run\n2) Collection Variables'da baseUrl = http://localhost:8080 (varsayılan).\n3) Klasörleri SIRAYLA çalıştırın (Collection Runner veya newman): 1. Auth → 2. Vehicles → 3. Wallet → 4. Trip Akisi → 5. Negatif Ornekler → 6. Bonus.\n\nDEĞİŞKENLER: baseUrl, userId, vehicleId, tripId, phone, otp (ve dahili: nationalId, locTripId, lowBalTripId, dupRecordedAt, mainFee, bonusTripId, bonusTripId2, destLat, destLng, locDestLat, locDestLng, lowBalDestLat, lowBalDestLng, cleanupTripId, cleanupLat, cleanupLng). Register sonrası userId/otp/phone, Create sonrası tripId otomatik yakalanır.\n\nTEKRAR KOŞTURILABİLİRLİK:\n- Seyahat akışı her koşuda KENDİ kullanıcısını yaratır (Register → Verify OTP → Top-up); seed kullanıcılarına bağımlı değildir.\n- Hedefler aracın GÜNCEL konumundan tam 6.1292 km ilerideki geodesik nokta olarak hesaplanır (6 ondalık hassasiyetle); mesafe/süre/ücret beklentileri (6.13 km / 10 dk / 91.95 TL) araç konumu kaysa bile korunur.\n- 'Negatif temizlik' isteği araç 2 üzerindeki ACTIVE seyahatleri tamamlar; '2. Vehicles' araç 4'ü seed durumuna (MAINTENANCE) geri alır; Bonus'un son isteği mock kapı sayaçlarını sıfırlar. Böylece koleksiyon DB sıfırlamadan üst üste tekrar koşabilir.\n\nTEMİZ SEED'E BAĞLI ADIMLAR:\n- 'Negatif: Yetersiz bakiye' senaryosu seed kullanıcı 4'ün 50 TL bakiyesine bağlıdır (bu kullanıcıya top-up yapılmadığı sürece bakiye değişmez → tekrar koşulabilir).\n- 'Negatif: Bakımdaki araç' senaryosu araç 4'ün MAINTENANCE durumuna bağlıdır ('2. Vehicles' klasörü her koşuda bu durumu geri koyar).\n- ÇOK SAYIDA koşuda (yaklaşık 10+) araçların kalan menzili azalır ve konumları kullanım alanının dışına kayabilir; tam sıfırlama için: docker compose down -v ; docker compose up -d ve uygulamayı yeniden başlatın.\n\nSeed değerleri (V2__seed_data.sql): kullanıcı 1 Ahmet (+905550000001, 2000 TL), kullanıcı 4 Elif (+905550000004, 50 TL), kullanıcı 5 Can (0 TL); araç 1 İstanbul AVAILABLE, araç 2 Ankara, araç 3 İzmir kalan-menzil 5 km, araç 4 İstanbul MAINTENANCE.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Her calistirmada benzersiz telefon + TC kimlik no uret (phone DB'de UNIQUE).",
+                  "// nationalId: RegisterRequest @Pattern [0-9]{11} -> TAM 11 rakam (7 + 4).",
+                  "const digits = () => Math.floor(1000000 + Math.random() * 9000000).toString();",
+                  "const fourDigits = () => Math.floor(1000 + Math.random() * 9000).toString();",
+                  "pm.collectionVariables.set('phone', '+90555' + digits());",
+                  "pm.collectionVariables.set('nationalId', digits() + fourDigits());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('userId dondu', function () { pm.expect(j.userId).to.be.a('number'); });",
+                  "pm.test('durum PENDING', function () { pm.expect(j.status).to.eql('PENDING'); });",
+                  "pm.test('otp 6 haneli (expose-in-response=true)', function () { pm.expect(j.otp).to.be.a('string').and.have.lengthOf(6); });",
+                  "pm.collectionVariables.set('userId', j.userId);",
+                  "pm.collectionVariables.set('otp', j.otp);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Postman Demo Kullanicisi\",\n  \"phone\": \"{{phone}}\",\n  \"nationalId\": \"{{nationalId}}\",\n  \"profilePhotoUrl\": \"https://example.com/photos/demo.jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/auth/register"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('dogrulanan telefon eslesiyor', function () { pm.expect(pm.response.json().phone).to.eql(pm.collectionVariables.get('phone')); });",
+                  "pm.test('durum VERIFIED', function () { pm.expect(pm.response.json().status).to.eql('VERIFIED'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\",\n  \"code\": \"{{otp}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/auth/verify-otp"
+          },
+          "response": []
+        },
+        {
+          "name": "Resend OTP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (yeni OTP) veya 409 NOT_PENDING (kullanici zaten dogrulanmis)', function () { pm.expect([200, 409]).to.include(pm.response.code); });",
+                  "if (pm.response.code === 200) {",
+                  "    const j = pm.response.json();",
+                  "    pm.test('yeni otp 6 haneli ve yakalandi', function () { pm.expect(j.otp).to.be.a('string').and.have.lengthOf(6); });",
+                  "    pm.collectionVariables.set('otp', j.otp);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"{{phone}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/auth/resend-otp"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Vehicles",
+      "item": [
+        {
+          "name": "List (tumu)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('4 seed arac listelendi', function () { pm.expect(pm.response.json()).to.be.an('array').with.lengthOf.at.least(4); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/vehicles" },
+          "response": []
+        },
+        {
+          "name": "List (status=MAINTENANCE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('donen her arac MAINTENANCE', function () { pm.response.json().forEach(v => pm.expect(v.status).to.eql('MAINTENANCE')); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/vehicles?status=MAINTENANCE",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "vehicles"],
+              "query": [{ "key": "status", "value": "MAINTENANCE" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get (arac 1 detay)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('kullanim alanlari dahil', function () { pm.expect(pm.response.json().zones).to.be.an('array').with.lengthOf.at.least(1); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/vehicles/{{vehicleId}}" },
+          "response": []
+        },
+        {
+          "name": "Change status (arac 4 -> AVAILABLE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('durum AVAILABLE oldu', function () { pm.expect(pm.response.json().status).to.eql('AVAILABLE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/vehicles/4/status"
+          },
+          "response": []
+        },
+        {
+          "name": "Change status (arac 4 -> MAINTENANCE, geri al)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('durum MAINTENANCE (eski haline dondu)', function () { pm.expect(pm.response.json().status).to.eql('MAINTENANCE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"MAINTENANCE\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/vehicles/4/status"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Wallet",
+      "item": [
+        {
+          "name": "Get Wallet",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('userId eslesiyor', function () { pm.expect(pm.response.json().userId).to.eql(Number(pm.collectionVariables.get('userId'))); });",
+                  "pm.test('yeni dogrulanan kullanicida bakiye 0.00', function () { pm.expect(Number(pm.response.json().balance)).to.eql(0); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{userId}}/wallet" },
+          "response": []
+        },
+        {
+          "name": "Top-up (500 TL)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('bakiye en az 500 TL', function () { pm.expect(Number(pm.response.json().balance)).to.be.at.least(500); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/users/{{userId}}/wallet/top-up"
+          },
+          "response": []
+        },
+        {
+          "name": "Transactions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('en az 1 TOP_UP hareketi', function () {",
+                  "    const txs = pm.response.json();",
+                  "    pm.expect(txs).to.be.an('array').with.lengthOf.at.least(1);",
+                  "    pm.expect(txs.some(t => t.type === 'TOP_UP')).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{userId}}/wallet/transactions" },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Trip Akisi",
+      "item": [
+        {
+          "name": "Create (arac 1, hedef arac konumundan 6.13 km)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Hedef, arac 1'in GUNCEL konumundan tam 6.1292 km ileride olacak sekilde geodesik",
+                  "// hesaplanir (R = 6371 km, yon 144.891284 derece; yon isareti her kosuda degisir ki",
+                  "// arac kumulatif olarak zone disina cikip 422 vermesin). Koordinatlar 6 ondalikla",
+                  "// yazilir ki haversine mesafesi hep 6.13 km'ye yuvarlansin (ucret 91.95 TL sabit).",
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);",
+                  "pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {",
+                  "    const v = res.json();",
+                  "    const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;",
+                  "    const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));",
+                  "    const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));",
+                  "    pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));",
+                  "    pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('durum CREATED', function () { pm.expect(j.status).to.eql('CREATED'); });",
+                  "pm.test('tahmini mesafe ~6.13 km', function () { pm.expect(Math.abs(Number(j.estimatedDistanceKm) - 6.13)).to.be.below(0.02); });",
+                  "pm.test('tahmini sure 10 dk', function () { pm.expect(j.estimatedDurationMin).to.eql(10); });",
+                  "pm.test('tahmini ucret 91.95 TL (6.13 x 15.00)', function () { pm.expect(Math.abs(Number(j.estimatedFee) - 91.95)).to.be.below(0.02); });",
+                  "pm.test('iliski: ucret = mesafe x pricePerKm (SPEC 7)', function () { pm.expect(Number(j.estimatedFee)).to.be.closeTo(Number(j.estimatedDistanceKm) * Number(j.pricePerKm), 0.005); });",
+                  "pm.test('iliski: sure = ceil(mesafe / 40 kmh x 60) dk', function () { pm.expect(j.estimatedDurationMin).to.eql(Math.ceil(Number(j.estimatedDistanceKm) / 40 * 60)); });",
+                  "pm.collectionVariables.set('tripId', j.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": {{userId}},\n  \"vehicleId\": 1,\n  \"destinationLatitude\": {{destLat}},\n  \"destinationLongitude\": {{destLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips"
+          },
+          "response": []
+        },
+        {
+          "name": "Get",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('ayni seyahat dondu', function () { pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('tripId'))); });",
+                  "pm.test('durum hala CREATED (start oncesi)', function () { pm.expect(pm.response.json().status).to.eql('CREATED'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{tripId}}" },
+          "response": []
+        },
+        {
+          "name": "Start",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('durum ACTIVE, startedAt dolu', function () { pm.expect(j.status).to.eql('ACTIVE'); pm.expect(j.startedAt).to.be.a('string'); });",
+                  "pm.test('menzil/bakiye gecti (tahminler guncel)', function () { pm.expect(Number(j.estimatedFee)).to.be.above(0); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/trips/{{tripId}}/start" },
+          "response": []
+        },
+        {
+          "name": "Record location (hizli -> SPEED_LIMIT uyarisi)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });",
+                  "pm.test('konum alan merkezi icinde -> city=Istanbul', function () { pm.expect(pm.response.json().city).to.eql('Istanbul'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 41.0369,\n  \"longitude\": 28.9850,\n  \"speedKmh\": 130\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{tripId}}/locations"
+          },
+          "response": []
+        },
+        {
+          "name": "Record location (normal hiz)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 41.0200,\n  \"longitude\": 28.9900,\n  \"speedKmh\": 45\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{tripId}}/locations"
+          },
+          "response": []
+        },
+        {
+          "name": "Locations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('en az 2 konum, zaman sirali', function () { const a = pm.response.json(); pm.expect(a).to.have.lengthOf.at.least(2); for (let i = 1; i < a.length; i++) { pm.expect(new Date(a[i].recordedAt) >= new Date(a[i-1].recordedAt)).to.be.true; } });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{tripId}}/locations" },
+          "response": []
+        },
+        {
+          "name": "Warnings",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('en az 1 SPEED_LIMIT uyarisi', function () { const w = pm.response.json(); pm.expect(w).to.have.lengthOf.at.least(1); pm.expect(w.some(x => x.warningType === 'SPEED_LIMIT')).to.be.true; });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{tripId}}/warnings" },
+          "response": []
+        },
+        {
+          "name": "Report fault (TIRE_BLOWOUT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('arac MAINTENANCE oldu', function () { pm.expect(pm.response.json().vehicleStatus).to.eql('MAINTENANCE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"faultType\": \"TIRE_BLOWOUT\",\n  \"description\": \"Arka sol lastik patladi (Postman senaryosu)\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{tripId}}/faults"
+          },
+          "response": []
+        },
+        {
+          "name": "Complete (hedef koordinatla)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('durum COMPLETED', function () { pm.expect(j.status).to.eql('COMPLETED'); });",
+                  "pm.test('ucret 91.95 TL tahsil edildi', function () { pm.expect(Math.abs(Number(j.estimatedFee) - 91.95)).to.be.below(0.02); });",
+                  "pm.test('iliski: tahsil edilen = tahmini ucret (SPEC 7)', function () { pm.expect(Number(j.fee.amount)).to.eql(Number(j.estimatedFee)); });",
+                  "pm.test('ucret kalemi CHARGED', function () { pm.expect(j.fee).to.exist; pm.expect(j.fee.status).to.eql('CHARGED'); });",
+                  "pm.test('hasar kalemi yok (fotograf yok)', function () { pm.expect(j.damageFee).to.eql(null); });",
+                  "pm.collectionVariables.set('mainFee', j.estimatedFee);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{destLat}},\n  \"longitude\": {{destLng}},\n  \"speedKmh\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{tripId}}/complete"
+          },
+          "response": []
+        },
+        {
+          "name": "Arac durumu (Complete sonrasi MAINTENANCE korunur)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('arac 1 MAINTENANCE KALDI (ariza varsa bakim devam eder, D5/D11)', function () { pm.expect(pm.response.json().status).to.eql('MAINTENANCE'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/vehicles/1" },
+          "response": []
+        },
+        {
+          "name": "Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('COMPLETED + gerceklesen mesafe/sure dolu', function () { pm.expect(j.status).to.eql('COMPLETED'); pm.expect(j.actualDistanceKm).to.exist; pm.expect(j.actualDurationMin).to.exist; });",
+                  "pm.test('iliski: gerceklesen mesafe >= 0', function () { pm.expect(Number(j.actualDistanceKm)).to.be.at.least(0); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{tripId}}/summary" },
+          "response": []
+        },
+        {
+          "name": "Timeline",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('CREATE/START/FAULT/WARNING/COMPLETE olaylari', function () { const t = pm.response.json().map(e => e.eventType); pm.expect(t).to.include('TRIP_CREATED'); pm.expect(t).to.include('TRIP_STARTED'); pm.expect(t).to.include('FAULT_REPORTED'); pm.expect(t).to.include('WARNING'); pm.expect(t).to.include('TRIP_COMPLETED'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{tripId}}/timeline" },
+          "response": []
+        },
+        {
+          "name": "User trips",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('en az 1 seyahat', function () { pm.expect(pm.response.json()).to.be.an('array').with.lengthOf.at.least(1); });",
+                  "pm.test('bu kosunun seyahati listede', function () { pm.expect(pm.response.json().some(t => t.id === Number(pm.collectionVariables.get('tripId')))).to.be.true; });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/users/{{userId}}/trips" },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Negatif Ornekler",
+      "item": [
+        {
+          "name": "Negatif: Hedef alan disi (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 422 (Unprocessable Entity)', function () { pm.response.to.have.status(422); });",
+                  "pm.test('kod DESTINATION_OUT_OF_ZONE', function () { pm.expect(pm.response.json().code).to.eql('DESTINATION_OUT_OF_ZONE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"vehicleId\": 2,\n  \"destinationLatitude\": 39.0,\n  \"destinationLongitude\": 35.0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Bakimdaki arac (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 409 (Conflict)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('kod VEHICLE_NOT_AVAILABLE', function () { pm.expect(pm.response.json().code).to.eql('VEHICLE_NOT_AVAILABLE'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"vehicleId\": 4,\n  \"destinationLatitude\": 40.9919,\n  \"destinationLongitude\": 29.0270\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Yetersiz bakiye - olustur (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Hedef: arac 2'nin GUNCEL konumundan tam 6.1292 km ilerideki nokta (geodesik,",
+                  "// 6 ondalik) -> Ankara tarife 10 TL/km -> ucret ~61.30 TL > kullanici 4 bakiyesi 50 TL.",
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);",
+                  "pm.sendRequest({ url: base + '/api/vehicles/2', method: 'GET' }, function (err, res) {",
+                  "    const v = res.json();",
+                  "    const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;",
+                  "    const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));",
+                  "    const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));",
+                  "    pm.collectionVariables.set('lowBalDestLat', (p2 * 180 / Math.PI).toFixed(6));",
+                  "    pm.collectionVariables.set('lowBalDestLng', (l2 * 180 / Math.PI).toFixed(6));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created) - olusturmada bakiye kontrol YOK', function () { pm.response.to.have.status(201); });",
+                  "pm.test('tahmini ucret 50 TL bakiyeyi asiyor', function () { pm.expect(Number(pm.response.json().estimatedFee)).to.be.above(50); });",
+                  "pm.collectionVariables.set('lowBalTripId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 4,\n  \"vehicleId\": 2,\n  \"destinationLatitude\": {{lowBalDestLat}},\n  \"destinationLongitude\": {{lowBalDestLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Yetersiz bakiye - baslat (402)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 402 (Payment Required)', function () { pm.response.to.have.status(402); });",
+                  "pm.test('kod INSUFFICIENT_BALANCE', function () { pm.expect(pm.response.json().code).to.eql('INSUFFICIENT_BALANCE'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/trips/{{lowBalTripId}}/start" },
+          "response": []
+        },
+        {
+          "name": "Negatif setup 1: konum testleri icin seyahat olustur (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Hedef: arac 2'nin GUNCEL konumundan tam 6.1292 km ilerideki nokta (geodesik,",
+                  "// 6 ondalik, yon isareti her kosuda degisir) -> ucret ~61.30 TL; kullanici 1 bakiyesi yeterli.",
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);",
+                  "pm.sendRequest({ url: base + '/api/vehicles/2', method: 'GET' }, function (err, res) {",
+                  "    const v = res.json();",
+                  "    const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;",
+                  "    const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));",
+                  "    const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));",
+                  "    pm.collectionVariables.set('locDestLat', (p2 * 180 / Math.PI).toFixed(6));",
+                  "    pm.collectionVariables.set('locDestLng', (l2 * 180 / Math.PI).toFixed(6));",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set('locTripId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": 1,\n  \"vehicleId\": 2,\n  \"destinationLatitude\": {{locDestLat}},\n  \"destinationLongitude\": {{locDestLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif setup 2: konum testleri icin baslat (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('durum ACTIVE', function () { pm.expect(pm.response.json().status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/trips/{{locTripId}}/start" },
+          "response": []
+        },
+        {
+          "name": "Negatif: Gecersiz konum (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 400 (Bad Request)', function () { pm.response.to.have.status(400); });",
+                  "pm.test('kod INVALID_LOCATION', function () { pm.expect(pm.response.json().code).to.eql('INVALID_LOCATION'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 95.0,\n  \"longitude\": 28.9,\n  \"speedKmh\": 50\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Konum kaydet (sabit recordedAt ile tekrar denemesi icin)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Iki istegin AYNI recordedAt'i kullanmasi icin koleksiyon degiskenine yazilir.",
+                  "pm.collectionVariables.set('dupRecordedAt', new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('duplicate=false', function () { pm.expect(pm.response.json().duplicate).to.be.false; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 40.0,\n  \"longitude\": 32.9,\n  \"speedKmh\": 50,\n  \"recordedAt\": \"{{dupRecordedAt}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Tekrar eden recordedAt (200 + duplicate=true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK) - idempotent tekrar', function () { pm.response.to.have.status(200); });",
+                  "pm.test('duplicate=true, yeni satir yok', function () { pm.expect(pm.response.json().duplicate).to.be.true; });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 40.0,\n  \"longitude\": 32.9,\n  \"speedKmh\": 50,\n  \"recordedAt\": \"{{dupRecordedAt}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Tekrar complete (200, ayni ozet)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK) - idempotent', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('COMPLETED ve ayni ucret (ikinci tahsilat YOK)', function () { pm.expect(j.status).to.eql('COMPLETED'); pm.expect(Number(j.estimatedFee)).to.eql(Number(pm.collectionVariables.get('mainFee'))); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 40.9919,\n  \"longitude\": 29.0270\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{tripId}}/complete"
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif temizlik - arac 2'de ACTIVE seyahat kalmadi (200)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const demoUser = Number(pm.collectionVariables.get('userId'));",
+                  "const users = [1, 4, demoUser].filter(u => !isNaN(u) && u > 0);",
+                  "const candidates = [];",
+                  "let pending = users.length;",
+                  "users.forEach(function (u) {",
+                  "    pm.sendRequest({ url: base + '/api/users/' + u + '/trips', method: 'GET' }, function (err, res) {",
+                  "        if (!err && res.code === 200) {",
+                  "            res.json().forEach(function (t) {",
+                  "                if (t.status === 'ACTIVE' && t.vehicleId === 2) { candidates.push(t); }",
+                  "            });",
+                  "        }",
+                  "        pending -= 1;",
+                  "        if (pending === 0) {",
+                  "            if (candidates.length === 0) {",
+                  "                // Arac 2'de ACTIVE seyahat yok -> zaten temiz: demo kullanicisinin son seyahatini",
+                  "                // idempotent olarak tamamla (COMPLETED seyahat -> 200, yazma yok).",
+                  "                pm.sendRequest({ url: base + '/api/users/' + demoUser + '/trips', method: 'GET' }, function (e2, r2) {",
+                  "                    const list = (e2 || !r2) ? [] : r2.json();",
+                  "                    if (list.length > 0) {",
+                  "                        pm.collectionVariables.set('cleanupTripId', list[0].id);",
+                  "                        pm.collectionVariables.set('cleanupLat', list[0].destinationLatitude);",
+                  "                        pm.collectionVariables.set('cleanupLng', list[0].destinationLongitude);",
+                  "                    } else {",
+                  "                        pm.collectionVariables.set('cleanupTripId', 1);",
+                  "                        pm.collectionVariables.set('cleanupLat', 40.9919);",
+                  "                        pm.collectionVariables.set('cleanupLng', 29.0270);",
+                  "                    }",
+                  "                });",
+                  "                return;",
+                  "            }",
+                  "            const target = candidates[0];",
+                  "            pm.collectionVariables.set('cleanupTripId', target.id);",
+                  "            pm.collectionVariables.set('cleanupLat', target.destinationLatitude);",
+                  "            pm.collectionVariables.set('cleanupLng', target.destinationLongitude);",
+                  "            // Yalnizca tamamlanacak seyahatin sahibine bakiye yukle (diger kullanicilarin bakiyesi bozulmaz)",
+                  "            const owner = target.userId || 1;",
+                  "            pm.sendRequest({ url: base + '/api/users/' + owner + '/wallet/top-up', method: 'POST',",
+                  "                header: { 'Content-Type': 'application/json' },",
+                  "                body: { mode: 'raw', raw: JSON.stringify({ amount: 500 }) } }, function () {});",
+                  "        }",
+                  "    });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK) - temizlik tamamlandi', function () { pm.response.to.have.status(200); });",
+                  "pm.test('durum COMPLETED', function () { pm.expect(pm.response.json().status).to.eql('COMPLETED'); });",
+                  "pm.test('arac 2 uzerinde ACTIVE seyahat kalmadi', function (done) {",
+                  "    const base = pm.collectionVariables.get('baseUrl');",
+                  "    const users = [1, 4, Number(pm.collectionVariables.get('userId'))].filter(u => !isNaN(u) && u > 0);",
+                  "    let left = 0;",
+                  "    let pending = users.length;",
+                  "    users.forEach(function (u) {",
+                  "        pm.sendRequest({ url: base + '/api/users/' + u + '/trips', method: 'GET' }, function (err, res) {",
+                  "            if (!err && res.code === 200) {",
+                  "                left += res.json().filter(t => t.status === 'ACTIVE' && t.vehicleId === 2).length;",
+                  "            }",
+                  "            pending -= 1;",
+                  "            if (pending === 0) {",
+                  "                pm.expect(left, 'arac 2 uzerinde ACTIVE seyahat kalmamali').to.eql(0);",
+                  "                done();",
+                  "            }",
+                  "        });",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{cleanupLat}},\n  \"longitude\": {{cleanupLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{cleanupTripId}}/complete"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Bonus",
+      "item": [
+        {
+          "name": "1. Mock door control (hata enjeksiyonu: failUnlock=1)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const userId = Number(pm.collectionVariables.get('userId'));",
+                  "const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);",
+                  "const jsonReq = (url, body) => ({ url, method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify(body) } });",
+                  "// 1) arac 1'i AVAILABLE yap (IN_USE ise API reddeder; hata yoksayilir)",
+                  "pm.sendRequest(jsonReq(base + '/api/vehicles/1/status', { status: 'AVAILABLE' }), function () {",
+                  "    // 2) hedefi aracin GUNCEL konumundan tam 6.1292 km ileride hesapla (6 ondalik; mesafe/ucret sabit kalsin)",
+                  "    pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {",
+                  "        const v = res.json();",
+                  "        const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;",
+                  "        const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));",
+                  "        const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));",
+                  "        pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));",
+                  "        pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));",
+                  "        // 3) demo kullaniciya bakiye + bonus seyahatini olustur",
+                  "        pm.sendRequest(jsonReq(base + '/api/users/' + userId + '/wallet/top-up', { amount: 1000 }), function () {",
+                  "            pm.sendRequest(jsonReq(base + '/api/trips', { userId: userId, vehicleId: 1,",
+                  "                destinationLatitude: Number(pm.collectionVariables.get('destLat')),",
+                  "                destinationLongitude: Number(pm.collectionVariables.get('destLng')) }), function (err2, res2) {",
+                  "                if (!err2 && res2.code === 201) { pm.collectionVariables.set('bonusTripId', String(res2.json().id)); }",
+                  "            });",
+                  "        });",
+                  "    });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (dev kontrol acik)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('unlock sayaci 1 olarak ayarlandi', function () { pm.expect(j.failUnlockCount).to.eql(1); });",
+                  "pm.test('bonusTripId yakalandi', function () { pm.expect(String(pm.collectionVariables.get('bonusTripId'))).to.not.eql(''); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"failUnlockCount\": 1,\n  \"failLockCount\": 0\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/dev/mock/door"
+          },
+          "response": []
+        },
+        {
+          "name": "2. Basarisiz start - kapi acilamadi (503 DOOR_UNLOCK_FAILED)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 503 (Service Unavailable)', function () { pm.response.to.have.status(503); });",
+                  "const j = pm.response.json();",
+                  "pm.test('kod DOOR_UNLOCK_FAILED, mesaj tekrar denemeye cagirir', function () {",
+                  "    pm.expect(j.code).to.eql('DOOR_UNLOCK_FAILED');",
+                  "    pm.expect(j.message).to.include('tekrar deneyebilirsiniz');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/start" },
+          "response": []
+        },
+        {
+          "name": "3. Tekrar start (200) - hata sayaci tukendi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('durum ACTIVE', function () { pm.expect(pm.response.json().status).to.eql('ACTIVE'); });"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/start" },
+          "response": []
+        },
+        {
+          "name": "4. Fotograf START (EXTERIOR, 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "const j = pm.response.json();",
+                  "pm.test('faz/tur dogru kaydedildi', function () {",
+                  "    pm.expect(j.phase).to.eql('START');",
+                  "    pm.expect(j.photoType).to.eql('EXTERIOR');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phase\": \"START\",\n  \"photoType\": \"EXTERIOR\",\n  \"url\": \"mock://bonus-start-ext.jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/photos"
+          },
+          "response": []
+        },
+        {
+          "name": "5. Fotograf END (EXTERIOR, hasarli: url'de 'damage')",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });",
+                  "pm.test('faz END', function () { pm.expect(pm.response.json().phase).to.eql('END'); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phase\": \"END\",\n  \"photoType\": \"EXTERIOR\",\n  \"url\": \"mock://bonus-end-damage-ext.jpg\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/photos"
+          },
+          "response": []
+        },
+        {
+          "name": "6. Complete (hasarli) - tek tahsilat: mesafe + 500.00",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const userId = pm.collectionVariables.get('userId');",
+                  "pm.sendRequest({ url: base + '/api/users/' + userId + '/wallet/top-up', method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ amount: 1000 }) } }, function () {});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('COMPLETED + DISTANCE kalemi CHARGED', function () {",
+                  "    pm.expect(j.status).to.eql('COMPLETED');",
+                  "    pm.expect(j.fee.status).to.eql('CHARGED');",
+                  "});",
+                  "pm.test('mesafe kalemi 91.95 TL (6.13 x 15.00)', function () {",
+                  "    pm.expect(Math.abs(Number(j.fee.amount) - 91.95)).to.be.below(0.02);",
+                  "});",
+                  "pm.test('hasar kalemi 500.00 ve CHARGED (ayri kalem)', function () {",
+                  "    pm.expect(Number(j.damageFee.amount)).to.eql(500.00);",
+                  "    pm.expect(j.damageFee.status).to.eql('CHARGED');",
+                  "});",
+                  "pm.test('1 hasar kaydi (DAMAGE/EXTERIOR), 2 fotograf', function () {",
+                  "    pm.expect(j.damages.length).to.eql(1);",
+                  "    pm.expect(j.damages[0].damageKind).to.eql('DAMAGE');",
+                  "    pm.expect(j.photos.length).to.eql(2);",
+                  "});",
+                  "pm.test('kapi izleri: en az 1 SUCCESS UNLOCK (TRIP_START)', function () {",
+                  "    pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'UNLOCK')).to.be.true;",
+                  "});",
+                  "pm.test('TEK TRIP_CHARGE = mesafe + hasar (591.95) ve aciklamada dokum', function (done) {",
+                  "    const base = pm.collectionVariables.get('baseUrl');",
+                  "    const userId = pm.collectionVariables.get('userId');",
+                  "    const tripId = Number(pm.collectionVariables.get('bonusTripId'));",
+                  "    pm.sendRequest({ url: base + '/api/users/' + userId + '/wallet/transactions', method: 'GET' }, function (err, res) {",
+                  "        const charges = res.json().filter(t => t.type === 'TRIP_CHARGE' && t.tripId === tripId);",
+                  "        pm.expect(charges.length, 'bu seyahat icin TAM 1 TRIP_CHARGE olmali').to.eql(1);",
+                  "        pm.expect(Math.abs(Number(charges[0].amount) - 591.95), 'tutar 91.95 + 500.00 = 591.95 olmali').to.be.below(0.02);",
+                  "        pm.expect(charges[0].description, 'hareket aciklamasinda mesafe + hasar dokumu olmali')",
+                  "            .to.include('mesafe: 91.95 TL + hasar: 500.00 TL');",
+                  "        done();",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{destLat}},\n  \"longitude\": {{destLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/complete"
+          },
+          "response": []
+        },
+        {
+          "name": "7. Summary - kapi/fotograf/hasar alanlari",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('doorActions: SUCCESS UNLOCK ve SUCCESS LOCK', function () {",
+                  "    pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'UNLOCK' && a.reason === 'TRIP_START')).to.be.true;",
+                  "    pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'LOCK' && a.reason === 'TRIP_COMPLETE')).to.be.true;",
+                  "});",
+                  "pm.test('photos 2, damages 1, damageFee 500.00', function () {",
+                  "    pm.expect(j.photos.length).to.eql(2);",
+                  "    pm.expect(j.damages.length).to.eql(1);",
+                  "    pm.expect(Number(j.damageFee.amount)).to.eql(500.00);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/trips/{{bonusTripId}}/summary" },
+          "response": []
+        },
+        {
+          "name": "8. Basarisiz complete - kapi kilitlenemedi (503 DOOR_LOCK_FAILED)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "const userId = Number(pm.collectionVariables.get('userId'));",
+                  "const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);",
+                  "const jsonReq = (url, body) => ({ url, method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify(body) } });",
+                  "pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {",
+                  "    const v = res.json();",
+                  "    const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;",
+                  "    const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));",
+                  "    const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));",
+                  "    pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));",
+                  "    pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));",
+                  "    pm.sendRequest(jsonReq(base + '/api/trips', { userId: userId, vehicleId: 1,",
+                  "        destinationLatitude: Number(pm.collectionVariables.get('destLat')),",
+                  "        destinationLongitude: Number(pm.collectionVariables.get('destLng')) }), function (err2, res2) {",
+                  "        if (err2 || res2.code !== 201) { return; }",
+                  "        const tripId = res2.json().id;",
+                  "        pm.collectionVariables.set('bonusTripId2', String(tripId));",
+                  "        pm.sendRequest(jsonReq(base + '/api/trips/' + tripId + '/start', {}), function () {",
+                  "            pm.sendRequest(jsonReq(base + '/api/dev/mock/door', { failUnlockCount: 0, failLockCount: 1 }), function () {});",
+                  "        });",
+                  "    });",
+                  "});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 503 (Service Unavailable)', function () { pm.response.to.have.status(503); });",
+                  "const j = pm.response.json();",
+                  "pm.test('kod DOOR_LOCK_FAILED, mesaj tekrar denemeye cagirir', function () {",
+                  "    pm.expect(j.code).to.eql('DOOR_LOCK_FAILED');",
+                  "    pm.expect(j.message).to.include('tekrar deneyebilirsiniz');",
+                  "});",
+                  "pm.test('bonusTripId2 yakalandi', function () { pm.expect(String(pm.collectionVariables.get('bonusTripId2'))).to.not.eql(''); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{destLat}},\n  \"longitude\": {{destLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{bonusTripId2}}/complete"
+          },
+          "response": []
+        },
+        {
+          "name": "9. Tekrar complete (200) + sayac temizligi",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });",
+                  "const j = pm.response.json();",
+                  "pm.test('COMPLETED, hasar yok (bu seyahatte fotograf yok)', function () {",
+                  "    pm.expect(j.status).to.eql('COMPLETED');",
+                  "    pm.expect(j.damageFee).to.eql(null);",
+                  "});",
+                  "const base = pm.collectionVariables.get('baseUrl');",
+                  "pm.sendRequest({ url: base + '/api/dev/mock/door', method: 'POST',",
+                  "    header: { 'Content-Type': 'application/json' },",
+                  "    body: { mode: 'raw', raw: JSON.stringify({ failUnlockCount: 0, failLockCount: 0 }) } }, function () {});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": {{destLat}},\n  \"longitude\": {{destLng}}\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/trips/{{bonusTripId2}}/complete"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "userId", "value": "" },
+    { "key": "vehicleId", "value": "1" },
+    { "key": "tripId", "value": "" },
+    { "key": "phone", "value": "" },
+    { "key": "otp", "value": "" },
+    { "key": "nationalId", "value": "" },
+    { "key": "locTripId", "value": "" },
+    { "key": "lowBalTripId", "value": "" },
+    { "key": "dupRecordedAt", "value": "" },
+    { "key": "mainFee", "value": "" },
+    { "key": "bonusTripId", "value": "" },
+    { "key": "bonusTripId2", "value": "" },
+    { "key": "destLat", "value": "" },
+    { "key": "destLng", "value": "" },
+    { "key": "locDestLat", "value": "" },
+    { "key": "locDestLng", "value": "" },
+    { "key": "lowBalDestLat", "value": "" },
+    { "key": "lowBalDestLng", "value": "" },
+    { "key": "cleanupTripId", "value": "" },
+    { "key": "cleanupLat", "value": "" },
+    { "key": "cleanupLng", "value": "" }
+  ]
+}

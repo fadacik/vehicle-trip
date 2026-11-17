@@ -1,0 +1,13 @@
+$kind: http-request
+description: Durum filtresiyle listeleme. Temiz seed'de 1 sonuc doner (arac 4).
+url: "{{baseUrl}}/api/vehicles?status=MAINTENANCE"
+method: GET
+queryParams:
+  status: MAINTENANCE
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('donen her arac MAINTENANCE', function () { pm.response.json().forEach(v => pm.expect(v.status).to.eql('MAINTENANCE')); });
+    language: text/javascript
+order: 2000

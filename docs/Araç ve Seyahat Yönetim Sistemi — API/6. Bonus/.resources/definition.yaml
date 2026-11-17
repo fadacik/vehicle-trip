@@ -1,0 +1,6 @@
+$kind: collection
+description: |-
+  Adım 17 bonus akışı (kendine yeterli senaryo): kapı hata enjeksiyonu ile başarısız start + retry, START/END fotoğraflarıyla hasarlı complete (tek TRIP_CHARGE = mesafe + 500.00), özet doğrulaması, kapı hatasıyla başarısız complete + retry.
+
+  SIRAYLA ÇALIŞTIRIN (1→9). 1. istek araç 1'i AVAILABLE yapar ve kendi bonus seyahatini oluşturur (bonusTripId); 8. istek ikinci seyahati kurup (bonusTripId2) failLock enjekte eder. Mock sayaçları tüketildikçe sıfırlanır; 9. istek sonunda sayaçları temizler.
+order: 6000

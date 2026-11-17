@@ -1,0 +1,16 @@
+$kind: http-request
+name: "2. Basarisiz start - kapı acilamadi (503 DOOR_UNLOCK_FAILED)"
+description: "Enjekte edilen unlock hatasi: start 503 doner ve TAM rollback uygulanir (trip CREATED, arac AVAILABLE kalir); FAILED denetim izi trip_door_actions tablosunda kalici ve kullanici tekrar deneyebilir."
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/start"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 503 (Service Unavailable)', function () { pm.response.to.have.status(503); });
+      const j = pm.response.json();
+      pm.test('kod DOOR_UNLOCK_FAILED, mesaj tekrar denemeye cagrir', function () {
+        pm.expect(j.code).to.eql('DOOR_UNLOCK_FAILED');
+        pm.expect(j.message).to.include('tekrar deneyebilirsiniz');
+      });
+    language: text/javascript
+order: 6200

@@ -1,0 +1,21 @@
+$kind: http-request
+name: "7. Summary - kapi/fotograf/hasar alanlari"
+description: "Özet tek üreticiden: doorActions (UNLOCK SUCCESS + LOCK SUCCESS), photos (2), damages (1), fee (DISTANCE) ve damageFee (DAMAGE) ayrı kalemler."
+url: "{{baseUrl}}/api/trips/{{bonusTripId}}/summary"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      const j = pm.response.json();
+      pm.test('doorActions: SUCCESS UNLOCK ve SUCCESS LOCK', function () {
+        pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'UNLOCK' && a.reason === 'TRIP_START')).to.be.true;
+        pm.expect(j.doorActions.some(a => a.status === 'SUCCESS' && a.action === 'LOCK' && a.reason === 'TRIP_COMPLETE')).to.be.true;
+      });
+      pm.test('photos 2, damages 1, damageFee 500.00', function () {
+        pm.expect(j.photos.length).to.eql(2);
+        pm.expect(j.damages.length).to.eql(1);
+        pm.expect(Number(j.damageFee.amount)).to.eql(500.00);
+      });
+    language: text/javascript
+order: 6700

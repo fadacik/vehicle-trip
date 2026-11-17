@@ -1,0 +1,44 @@
+$kind: http-request
+description: "Seyahat olusturma: baslangic = arac 1'in GUNCEL konumu (D3), hedef = aracin konumundan tam 6.1292 km ilerideki nokta (geodesik, yon 144.891284 derece). Boylece tahminler her kosuda degismez: ~6.13 km / 10 dk / 91.95 TL (seed konumunda bu nokta tam olarak Kadikoy'dur). tripId yakalanir."
+url: "{{baseUrl}}/api/trips"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": {{userId}},
+      "vehicleId": 1,
+      "destinationLatitude": {{destLat}},
+      "destinationLongitude": {{destLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Hedef, arac 1'in gUNCEL konumundan tam 6.1292 km ileride olacak sekilde geodesik
+      // hesaplanir (R = 6371 km, yon 144.891284 derece; yon isareti her kosuda degisir ki
+      // arac kumulatif olarak zone disina cikip 422 vermesin). Mesafe/uret/sure beklentileri
+      // (6.13 km / 10 dk / 91.95 TL) arac konumu kaymisse bile aynen korunur.
+      const base = pm.collectionVariables.get('baseUrl');
+      const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+      pm.sendRequest({ url: base + '/api/vehicles/1', method: 'GET' }, function (err, res) {
+        const v = res.json();
+        const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;
+        const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));
+        const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+        pm.collectionVariables.set('destLat', (p2 * 180 / Math.PI).toFixed(6));
+        pm.collectionVariables.set('destLng', (l2 * 180 / Math.PI).toFixed(6));
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      const j = pm.response.json();
+      pm.test('durum CREATED', function () { pm.expect(j.status).to.eql('CREATED'); });
+      pm.test('tahmini mesafe ~6.13 km', function () { pm.expect(Math.abs(Number(j.estimatedDistanceKm) - 6.13)).to.be.below(0.02); });
+      pm.test('tahmini sure 10 dk', function () { pm.expect(j.estimatedDurationMin).to.eql(10); });
+      pm.test('tahmini ucret 91.95 TL (6.13 x 15.00)', function () { pm.expect(Math.abs(Number(j.estimatedFee) - 91.95)).to.be.below(0.02); });
+      pm.collectionVariables.set('tripId', j.id);
+    language: text/javascript
+order: 1000

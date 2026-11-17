@@ -1,0 +1,38 @@
+$kind: http-request
+name: "Negatif setup 1: konum testleri icin seyahat olustur (201)"
+description: "Kurucu adim 1/2: konum negatif testleri (400 / duplicate) ACTIVE seyahat gerektirdiginden seed kullanici 1 + Ankara araci (id 2) ile yeni seyahat olusturulur; locTripId yakalanir. Hedef, aracin GUNCEL konumundan tam 6.1292 km ileride hesaplanir (Ankara tarife 10 TL/km -> ucret ~61.29 TL): arac konumu kaymissa bile ucret sifir olmaz, yani 'bakiye yetersiz' ve temizlik adimlari her zaman anlamli kalir."
+url: "{{baseUrl}}/api/trips"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": 1,
+      "vehicleId": 2,
+      "destinationLatitude": {{locDestLat}},
+      "destinationLongitude": {{locDestLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Hedef: arac 2'nin gUNCEL konumundan tam 6.1292 km ilerideki nokta (geodesik, yon 144.891284 derece,
+      // isaret her kosuda degisir). Boylece arac konumu kaymisse bile mesafe/uret sabit kalir.
+      const base = pm.collectionVariables.get('baseUrl');
+      const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+      pm.sendRequest({ url: base + '/api/vehicles/2', method: 'GET' }, function (err, res) {
+        const v = res.json();
+        const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;
+        const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));
+        const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+        pm.collectionVariables.set('locDestLat', (p2 * 180 / Math.PI).toFixed(6));
+        pm.collectionVariables.set('locDestLng', (l2 * 180 / Math.PI).toFixed(6));
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created)', function () { pm.response.to.have.status(201); });
+      pm.collectionVariables.set('locTripId', pm.response.json().id);
+    language: text/javascript
+order: 5000

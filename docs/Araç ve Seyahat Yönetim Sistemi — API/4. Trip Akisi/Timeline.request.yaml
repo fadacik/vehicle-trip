@@ -1,0 +1,11 @@
+$kind: http-request
+description: Zaman cizelgesi (zaman sirali; esit zamanda sabit siralama).
+url: "{{baseUrl}}/api/trips/{{tripId}}/timeline"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('CREATE/START/FAULT/WARNING/COMPLETE olaylari', function () { const t = pm.response.json().map(e => e.eventType); pm.expect(t).to.include('TRIP_CREATED'); pm.expect(t).to.include('TRIP_STARTED'); pm.expect(t).to.include('FAULT_REPORTED'); pm.expect(t).to.include('WARNING'); pm.expect(t).to.include('TRIP_COMPLETED'); });
+    language: text/javascript
+order: 12000

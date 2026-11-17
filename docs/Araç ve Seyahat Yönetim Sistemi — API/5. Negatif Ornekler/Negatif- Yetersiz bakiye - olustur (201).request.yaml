@@ -1,0 +1,37 @@
+$kind: http-request
+name: "Negatif: Yetersiz bakiye - olustur (201)"
+description: "Kullanici 4 (Elif, bakiye 50 TL) + Ankara araci (tarife 10 TL/km). Hedef aracin GUNCEL konumundan 6.1292 km ileride hesaplanir -> ucret ~61.29 TL > 50 TL, yani start adiminda 402 INSUFFICIENT_BALANCE beklenir (arac konumu kaymis olsa bile ucret 0 olmaz). Olusturma yalnizca tahmin uretir; bakiye kontrolu baslatmadadir -> 201."
+url: "{{baseUrl}}/api/trips"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "userId": 4,
+      "vehicleId": 2,
+      "destinationLatitude": {{lowBalDestLat}},
+      "destinationLongitude": {{lowBalDestLng}}
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Hedef: arac 2'nin gUNCEL konumundan tam 6.1292 km ilerideki nokta (geodesik) -> ucret ~61.29 TL
+      const base = pm.collectionVariables.get('baseUrl');
+      const R = 6371.0, D = 6.1292, BRG = (144.891284 * Math.PI / 180) * (Math.random() < 0.5 ? 1 : -1);
+      pm.sendRequest({ url: base + '/api/vehicles/2', method: 'GET' }, function (err, res) {
+        const v = res.json();
+        const p1 = v.latitude * Math.PI / 180, l1 = v.longitude * Math.PI / 180, d = D / R;
+        const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(BRG));
+        const l2 = l1 + Math.atan2(Math.sin(BRG) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+        pm.collectionVariables.set('lowBalDestLat', (p2 * 180 / Math.PI).toFixed(6));
+        pm.collectionVariables.set('lowBalDestLng', (l2 * 180 / Math.PI).toFixed(6));
+      });
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 201 (Created) - olusturmada bakiye kontrol YOK', function () { pm.response.to.have.status(201); });
+      pm.collectionVariables.set('lowBalTripId', pm.response.json().id);
+    language: text/javascript
+order: 3000

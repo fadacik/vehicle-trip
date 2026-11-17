@@ -1,0 +1,22 @@
+$kind: http-request
+name: "Negatif: Gecersiz konum (400)"
+description: "Enlem 95 -> [-90, 90] disindaki konum 400 INVALID_LOCATION; hicbir sey yazilmaz. (locTripId icin once 'Negatif setup: ACTIVE seyahat' adimlarini calistirin.)"
+url: "{{baseUrl}}/api/trips/{{locTripId}}/locations"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "latitude": 95.0,
+      "longitude": 28.9,
+      "speedKmh": 50
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 400 (Bad Request)', function () { pm.response.to.have.status(400); });
+      pm.test('kod INVALID_LOCATION', function () { pm.expect(pm.response.json().code).to.eql('INVALID_LOCATION'); });
+    language: text/javascript
+order: 7000

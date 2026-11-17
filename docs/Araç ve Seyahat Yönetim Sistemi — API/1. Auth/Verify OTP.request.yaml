@@ -1,0 +1,20 @@
+$kind: http-request
+description: "OTP ile dogrulama: kullanimci VERIFIED olur, 0 TL cuzdani acilir. Yanlis kod -> 400 OTP_INVALID, suresi dolmus -> 400 OTP_EXPIRED."
+url: "{{baseUrl}}/api/auth/verify-otp"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "phone": "{{phone}}",
+      "code": "{{otp}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('dogrulanan telefon eslesiyor', function () { pm.expect(pm.response.json().phone).to.eql(pm.collectionVariables.get('phone')); });
+    language: text/javascript
+order: 2000

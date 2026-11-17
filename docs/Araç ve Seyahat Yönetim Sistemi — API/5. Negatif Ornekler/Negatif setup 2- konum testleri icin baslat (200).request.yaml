@@ -1,0 +1,12 @@
+$kind: http-request
+name: "Negatif setup 2: konum testleri icin baslat (200)"
+description: "Kurucu adim 2/2: seyahat ACTIVE olur (kullanici 1 bakiyesi ve arac 2 menzili yeterli) -> konum negatif testleri calisabilir."
+url: "{{baseUrl}}/api/trips/{{locTripId}}/start"
+method: POST
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('Durum kodu 200 (OK)', function () { pm.response.to.have.status(200); });
+      pm.test('durum ACTIVE', function () { pm.expect(pm.response.json().status).to.eql('ACTIVE'); });
+    language: text/javascript
+order: 6000
